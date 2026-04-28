@@ -24,6 +24,19 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
   bool _obscurePassword = true;
   bool _isLoading = false;
   String _selectedRole = AppConstants.roleUser;
+  
+  // Password criteria states
+  bool _hasMinLength = false;
+  bool _hasUppercase = false;
+  bool _hasLowercase = false;
+  bool _hasDigit = false;
+  bool _hasSpecialChar = false;
+
+  // Validation UI states
+  bool _emailTouched = false;
+  bool _isEmailValid = true;
+  bool _passwordTouched = false;
+  bool _isPasswordValid = true;
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
 
@@ -36,6 +49,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
     );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     _animController.forward();
+    _passwordController.addListener(_validatePassword);
+    _emailController.addListener(_validateEmail);
   }
 
   @override
@@ -183,11 +198,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                           const SizedBox(height: 16),
                           _buildField('Email', _emailController,
                               icon: Icons.email_outlined,
-                              hint: 'you@example.com',
+                              hint: 'you@gmail.com',
                               keyboard: TextInputType.emailAddress,
+                              hasError: !_isEmailValid && _emailTouched,
                               validator: (v) {
                             if (v == null || v.isEmpty) return 'Enter your email';
                             if (!v.contains('@')) return 'Enter a valid email';
+                            if (!v.trim().toLowerCase().endsWith('@gmail.com')) {
+                              return 'Only Gmail addresses are allowed';
+                            }
                             return null;
                           }),
                           const SizedBox(height: 16),
@@ -215,6 +234,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                               hintText: '••••••••',
                               prefixIcon: Icon(Icons.lock_outlined,
                                   color: AppTheme.textLight, size: 20),
+                              enabledBorder: (!_isPasswordValid && _passwordTouched)
+                                  ? OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+                                    )
+                                  : null,
+                              focusedBorder: (!_isPasswordValid && _passwordTouched)
+                                  ? OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                                    )
+                                  : null,
                               suffixIcon: IconButton(
                                 icon: Icon(
                                   _obscurePassword
@@ -229,10 +260,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                             ),
                             validator: (v) {
                               if (v == null || v.isEmpty) return 'Enter a password';
-                              if (v.length < 6) return 'Password must be 6+ characters';
+                              if (!_hasMinLength || !_hasUppercase || !_hasLowercase || !_hasDigit || !_hasSpecialChar) {
+                                return 'Password does not meet all criteria';
+                              }
                               return null;
                             },
                           ),
+                          
+                          const SizedBox(height: 12),
+                          _buildCriteriaChecklist(),
 
                           const SizedBox(height: 28),
 
@@ -387,6 +423,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
     String? hint,
     TextInputType keyboard = TextInputType.text,
     bool required = true,
+    bool hasError = false,
     String? Function(String?)? validator,
   }) {
     return Column(
@@ -409,6 +446,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
             prefixIcon: icon != null
                 ? Icon(icon, color: AppTheme.textLight, size: 20)
                 : null,
+            enabledBorder: hasError 
+                ? OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+                  )
+                : null,
+            focusedBorder: hasError 
+                ? OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                  )
+                : null,
           ),
           validator: validator ??
               (required
@@ -417,6 +466,97 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                   : null),
         ),
       ],
+    );
+  }
+
+  void _validateEmail() {
+    final email = _emailController.text;
+    if (email.isEmpty) {
+      setState(() {
+        _isEmailValid = true;
+      });
+      return;
+    }
+    setState(() {
+      _emailTouched = true;
+      _isEmailValid = email.contains('@') && email.trim().toLowerCase().endsWith('@gmail.com');
+    });
+  }
+
+  void _validatePassword() {
+    final pass = _passwordController.text;
+    if (pass.isEmpty) {
+      setState(() {
+        _hasMinLength = false;
+        _hasUppercase = false;
+        _hasLowercase = false;
+        _hasDigit = false;
+        _hasSpecialChar = false;
+        _isPasswordValid = true;
+      });
+      return;
+    }
+    setState(() {
+      _passwordTouched = true;
+      _hasMinLength = pass.length >= 8;
+      _hasUppercase = pass.contains(RegExp(r'[A-Z]'));
+      _hasLowercase = pass.contains(RegExp(r'[a-z]'));
+      _hasDigit = pass.contains(RegExp(r'[0-9]'));
+      _hasSpecialChar = pass.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+      _isPasswordValid = _hasMinLength && _hasUppercase && _hasLowercase && _hasDigit && _hasSpecialChar;
+    });
+  }
+
+  Widget _buildCriteriaChecklist() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Password Requirements:',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildCriteriaItem('At least 8 characters', _hasMinLength),
+          _buildCriteriaItem('At least one uppercase letter', _hasUppercase),
+          _buildCriteriaItem('At least one lowercase letter', _hasLowercase),
+          _buildCriteriaItem('At least one number', _hasDigit),
+          _buildCriteriaItem('At least one special character (!@#\$%^&*)', _hasSpecialChar),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCriteriaItem(String text, bool isMet) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isMet ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+            color: isMet ? Colors.green : Colors.grey,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: isMet ? AppTheme.textPrimary : AppTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

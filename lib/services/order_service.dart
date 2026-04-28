@@ -15,10 +15,15 @@ class OrderService {
     required String paymentMethod,
     required DateTime orderDate,
   }) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      throw Exception('Your session has expired. Please log in again.');
+    }
+
     final data = await _supabase
         .from('orders')
         .insert({
-          'user_id': userId,
+          'user_id': user.id, // Use authenticated user's ID directly
           'mess_id': messId,
           'meal_type': mealType,
           'order_date': orderDate.toIso8601String().split('T')[0],
@@ -42,14 +47,12 @@ class OrderService {
     return (data as List).map((e) => Order.fromJson(e)).toList();
   }
 
-  /// Get today's orders for a mess
+  /// Get all orders for a mess
   Future<List<Order>> getOrdersForMess(String messId) async {
-    final today = DateTime.now().toIso8601String().split('T')[0];
     final data = await _supabase
         .from('orders')
         .select('*, profiles(full_name, phone)')
         .eq('mess_id', messId)
-        .eq('order_date', today)
         .order('created_at', ascending: false);
     return (data as List).map((e) => Order.fromJson(e)).toList();
   }

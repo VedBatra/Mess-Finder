@@ -57,6 +57,40 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen>
     );
   }
 
+  Future<void> _cancelOrder() async {
+    final order = _order;
+    if (order == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cancel Order?', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Text('Are you sure you want to cancel this order?', style: GoogleFonts.inter()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('No', style: GoogleFonts.inter(color: AppTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Yes, Cancel', style: GoogleFonts.inter(color: AppTheme.errorColor, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _loading = true);
+      await OrderService().updateOrderStatus(order.id, AppConstants.statusCancelled);
+      if (mounted) {
+        setState(() {
+          _order = _order?.copyWith(status: AppConstants.statusCancelled);
+          _loading = false;
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
     _channel?.unsubscribe();
@@ -93,8 +127,9 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen>
       AppConstants.statusReady,
       AppConstants.statusCompleted,
     ];
-    final currentStep =
-        steps.indexWhere((s) => s == order.status).clamp(0, steps.length);
+    final currentStep = order.status == AppConstants.statusCancelled
+        ? -1
+        : steps.indexWhere((s) => s == order.status).clamp(0, steps.length);
     final statusColor = AppTheme.getStatusColor(order.status);
 
     return SingleChildScrollView(
@@ -137,7 +172,8 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen>
           const SizedBox(height: 36),
 
           // Status stepper
-          _StatusStepper(steps: steps, currentStep: currentStep),
+          if (order.status != AppConstants.statusCancelled)
+            _StatusStepper(steps: steps, currentStep: currentStep),
 
           const SizedBox(height: 36),
 
@@ -145,7 +181,8 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen>
           AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
-              final pulse = order.status != AppConstants.statusCompleted
+              final pulse = order.status != AppConstants.statusCompleted && 
+                            order.status != AppConstants.statusCancelled
                   ? 0.85 + (_pulseController.value * 0.15)
                   : 1.0;
               return Transform.scale(
@@ -200,6 +237,31 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen>
             ),
           ),
 
+          if (order.status == AppConstants.statusPending) ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: OutlinedButton.icon(
+                onPressed: _cancelOrder,
+                icon: const Icon(Icons.cancel_outlined, color: AppTheme.errorColor),
+                label: Text(
+                  'Cancel Order',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.errorColor,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppTheme.errorColor),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+
           if (order.status == AppConstants.statusCompleted) ...[
             const SizedBox(height: 24),
             Container(
@@ -248,6 +310,7 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen>
       case 'accepted': return 'Confirmed! 🎉';
       case 'ready': return 'Food Ready! 🍽️';
       case 'completed': return 'Completed! 🥳';
+      case 'cancelled': return 'Cancelled ❌';
       default: return status;
     }
   }
@@ -258,6 +321,7 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen>
       case 'accepted': return 'Your food is being prepared with care.';
       case 'ready': return 'Please collect your food or it\'s on the way!';
       case 'completed': return 'Thank you! Hope you enjoyed your meal.';
+      case 'cancelled': return 'This order has been cancelled.';
       default: return 'Status: $status';
     }
   }

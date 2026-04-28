@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../../models/order.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mess_provider.dart';
@@ -20,6 +21,26 @@ class _OwnerOrdersScreenState extends ConsumerState<OwnerOrdersScreen> {
   List<Order> _orders = [];
   bool _loading = true;
   dynamic _channel;
+  String _selectedStatus = 'all';
+  String _selectedSort = 'newest';
+
+  List<Order> get _filteredOrders {
+    List<Order> filtered = List.from(_orders);
+
+    if (_selectedStatus != 'all') {
+      filtered = filtered.where((o) => o.status == _selectedStatus).toList();
+    } else {
+      filtered = filtered.where((o) => o.status != AppConstants.statusCancelled).toList();
+    }
+
+    if (_selectedSort == 'newest') {
+      filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    } else {
+      filtered.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    }
+
+    return filtered;
+  }
 
   @override
   void initState() {
@@ -75,12 +96,92 @@ class _OwnerOrdersScreenState extends ConsumerState<OwnerOrdersScreen> {
     });
   }
 
+  Widget _buildFilters() {
+    final statuses = ['all', 'pending', 'accepted', 'ready', 'completed'];
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      color: Colors.white,
+      child: Column(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: statuses.map((status) {
+                final isSelected = _selectedStatus == status;
+                final label = status == 'all' ? 'All' : '${status[0].toUpperCase()}${status.substring(1)}';
+                final color = status == 'all' ? AppTheme.primaryColor : AppTheme.getStatusColor(status);
+                
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(label),
+                    selected: isSelected,
+                    selectedColor: color.withValues(alpha: 0.2),
+                    labelStyle: GoogleFonts.inter(
+                      color: isSelected ? color : AppTheme.textSecondary,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() => _selectedStatus = status);
+                      }
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  'Sort by Date: ',
+                  style: GoogleFonts.inter(
+                    color: AppTheme.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+                DropdownButton<String>(
+                  value: _selectedSort,
+                  items: [
+                    DropdownMenuItem(
+                      value: 'newest',
+                      child: Text('Newest First', style: GoogleFonts.inter(fontSize: 13)),
+                    ),
+                    DropdownMenuItem(
+                      value: 'oldest',
+                      child: Text('Oldest First', style: GoogleFonts.inter(fontSize: 13)),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _selectedSort = value);
+                    }
+                  },
+                  underline: Container(),
+                  icon: const Icon(Icons.sort_rounded, size: 16, color: AppTheme.primaryColor),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final filteredOrders = _filteredOrders;
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: Text("Today's Orders",
+        title: Text("All Orders",
             style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
@@ -95,42 +196,45 @@ class _OwnerOrdersScreenState extends ConsumerState<OwnerOrdersScreen> {
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryColor))
-          : _orders.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(24),
+          : Column(
+              children: [
+                _buildFilters(),
+                Expanded(
+                  child: filteredOrders.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: const Icon(Icons.receipt_long_rounded,
+                                    size: 40, color: AppTheme.primaryColor),
+                              ),
+                              const SizedBox(height: 20),
+                              Text('No matching orders',
+                                  style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 18,
+                                      color: AppTheme.textPrimary)),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          itemCount: filteredOrders.length,
+                          itemBuilder: (context, index) => _OwnerOrderCard(
+                            order: filteredOrders[index],
+                            onUpdateStatus: _updateStatus,
+                          ),
                         ),
-                        child: const Icon(Icons.receipt_long_rounded,
-                            size: 40, color: AppTheme.primaryColor),
-                      ),
-                      const SizedBox(height: 20),
-                      Text('No orders yet today',
-                          style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 18,
-                              color: AppTheme.textPrimary)),
-                      const SizedBox(height: 6),
-                      Text('New orders appear here in real-time ⚡',
-                          style: GoogleFonts.inter(
-                              color: AppTheme.textSecondary)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  itemCount: _orders.length,
-                  itemBuilder: (context, index) => _OwnerOrderCard(
-                    order: _orders[index],
-                    onUpdateStatus: _updateStatus,
-                  ),
                 ),
+              ],
+            ),
     );
   }
 }
@@ -205,7 +309,7 @@ class _OwnerOrderCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(left: 58),
             child: Text(
-              'Payment: ${order.paymentMethod.toUpperCase()}',
+              'Order Date: ${DateFormat('dd MMM yyyy').format(order.orderDate)} · Payment: ${order.paymentMethod.toUpperCase()}',
               style: GoogleFonts.inter(
                   color: AppTheme.textLight, fontSize: 12),
             ),
