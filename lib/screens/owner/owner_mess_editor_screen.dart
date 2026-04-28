@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../services/location_service.dart';
 import '../../models/mess.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/mess_provider.dart';
@@ -33,10 +34,11 @@ class _OwnerMessEditorScreenState extends ConsumerState<OwnerMessEditorScreen> {
   bool _isLoading = false;
   Mess? _existingMess;
 
-  // Google Maps location (defaults to center of India)
-  LatLng _selectedLocation = const LatLng(20.5937, 78.9629);
+  // Location coordinates
+  double _selectedLat = 20.5937;
+  double _selectedLng = 78.9629;
   bool _locationPicked = false;
-  GoogleMapController? _mapController;
+  bool _fetchingLocation = false;
 
   @override
   void initState() {
@@ -62,7 +64,8 @@ class _OwnerMessEditorScreenState extends ConsumerState<OwnerMessEditorScreen> {
         _deliveryChargeCtrl.text = mess.deliveryCharge.toString();
         _packagingChargeCtrl.text = mess.packagingCharge.toString();
         if (mess.latitude != 0 && mess.longitude != 0) {
-          _selectedLocation = LatLng(mess.latitude, mess.longitude);
+          _selectedLat = mess.latitude;
+          _selectedLng = mess.longitude;
           _locationPicked = true;
         }
       });
@@ -78,7 +81,6 @@ class _OwnerMessEditorScreenState extends ConsumerState<OwnerMessEditorScreen> {
     ]) {
       c.dispose();
     }
-    _mapController?.dispose();
     super.dispose();
   }
 
@@ -103,8 +105,8 @@ class _OwnerMessEditorScreenState extends ConsumerState<OwnerMessEditorScreen> {
       'owner_id': profile.id,
       'mess_name': _nameCtrl.text.trim(),
       'address': _addressCtrl.text.trim(),
-      'latitude': _selectedLocation.latitude,
-      'longitude': _selectedLocation.longitude,
+      'latitude': _selectedLat,
+      'longitude': _selectedLng,
       'one_time_lunch_price': int.tryParse(_lunchPriceCtrl.text) ?? 0,
       'one_time_dinner_price': int.tryParse(_dinnerPriceCtrl.text) ?? 0,
       'lunch_cutoff': _lunchCutoffCtrl.text.trim(),
@@ -169,88 +171,180 @@ class _OwnerMessEditorScreenState extends ConsumerState<OwnerMessEditorScreen> {
             ),
             const SizedBox(height: 20),
 
-            // ── Google Maps Location Picker ──
+            // ── Location Picker ──
             _SectionHeader(text: '📍 Mess Location', icon: Icons.map_rounded),
             Text(
-              'Tap on the map to pin your exact mess location.',
+              'Use your current location or enter coordinates manually.',
               style: GoogleFonts.inter(
                   color: AppTheme.textSecondary, fontSize: 13),
             ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Container(
-                height: 260,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: AppTheme.softShadow,
-                ),
-                child: GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: _selectedLocation,
-                    zoom: _locationPicked ? 15.0 : 5.0,
-                  ),
-                  onMapCreated: (controller) {
-                    _mapController = controller;
-                  },
-                  onTap: (latLng) {
-                    setState(() {
-                      _selectedLocation = latLng;
-                      _locationPicked = true;
-                    });
-                  },
-                  markers: _locationPicked
-                      ? {
-                          Marker(
-                            markerId: const MarkerId('selected'),
-                            position: _selectedLocation,
-                            infoWindow:
-                                const InfoWindow(title: 'Your Mess Location'),
+            const SizedBox(height: 12),
+
+            // Use Current Location button
+            Container(
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: AppTheme.primaryShadow,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _fetchingLocation ? null : () async {
+                    setState(() => _fetchingLocation = true);
+                    try {
+                      final pos = await LocationService().getCurrentPosition();
+                      if (mounted) {
+                        setState(() {
+                          _selectedLat = pos.latitude;
+                          _selectedLng = pos.longitude;
+                          _locationPicked = true;
+                          _fetchingLocation = false;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Location captured!',
+                                style: GoogleFonts.inter(color: Colors.white)),
+                            backgroundColor: AppTheme.successColor,
                           ),
-                        }
-                      : {},
-                  zoomControlsEnabled: true,
-                  mapToolbarEnabled: false,
-                  myLocationButtonEnabled: false,
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        setState(() => _fetchingLocation = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Could not get location: $e',
+                                style: GoogleFonts.inter()),
+                            backgroundColor: AppTheme.errorColor,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_fetchingLocation)
+                          const SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2.5),
+                          )
+                        else
+                          const Icon(Icons.my_location_rounded,
+                              color: Colors.white, size: 22),
+                        const SizedBox(width: 10),
+                        Text(
+                          _fetchingLocation
+                              ? 'Getting Location...'
+                              : '📍 Use My Current Location',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 8),
+
+            const SizedBox(height: 16),
+
+            // Location preview card
+            GestureDetector(
+              onTap: _locationPicked ? () async {
+                final url = Uri.parse(
+                  'https://www.google.com/maps/search/?api=1&query=$_selectedLat,$_selectedLng',
+                );
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              } : null,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: _locationPicked
-                      ? AppTheme.successColor.withValues(alpha: 0.08)
-                      : AppTheme.errorColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
+                      ? AppTheme.successColor.withValues(alpha: 0.06)
+                      : AppTheme.errorColor.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _locationPicked
+                        ? AppTheme.successColor.withValues(alpha: 0.2)
+                        : AppTheme.errorColor.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      _locationPicked
-                          ? Icons.check_circle_rounded
-                          : Icons.warning_amber_rounded,
-                      size: 18,
-                      color: _locationPicked
-                          ? AppTheme.successColor
-                          : AppTheme.errorColor,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _locationPicked
-                          ? '📌 ${_selectedLocation.latitude.toStringAsFixed(5)}, '
-                              '${_selectedLocation.longitude.toStringAsFixed(5)}'
-                          : '⚠️ No location selected — tap the map',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: _locationPicked
+                            ? AppTheme.successColor.withValues(alpha: 0.12)
+                            : AppTheme.errorColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        _locationPicked
+                            ? Icons.check_circle_rounded
+                            : Icons.warning_amber_rounded,
+                        size: 22,
                         color: _locationPicked
                             ? AppTheme.successColor
                             : AppTheme.errorColor,
-                        fontWeight: FontWeight.w500,
                       ),
                     ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _locationPicked
+                                ? 'Location Set'
+                                : 'No Location Selected',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: _locationPicked
+                                  ? AppTheme.successColor
+                                  : AppTheme.errorColor,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _locationPicked
+                                ? '${_selectedLat.toStringAsFixed(5)}, ${_selectedLng.toStringAsFixed(5)}'
+                                : 'Tap the button above to set location',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_locationPicked)
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.open_in_new_rounded,
+                          size: 16,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
                   ],
                 ),
               ),

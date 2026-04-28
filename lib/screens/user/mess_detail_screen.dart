@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/mess.dart';
 import '../../models/menu.dart';
 import '../../providers/mess_provider.dart';
@@ -309,7 +309,7 @@ class _MessDetailBodyState extends ConsumerState<_MessDetailBody>
                       ),
                     ],
 
-                    // Google Maps preview
+                    // Location card – opens Google Maps on tap
                     if (m.latitude != 0 && m.longitude != 0) ...[
                       const SizedBox(height: 20),
                       Text(
@@ -321,26 +321,98 @@ class _MessDetailBodyState extends ConsumerState<_MessDetailBody>
                         ),
                       ),
                       const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
+                      GestureDetector(
+                        onTap: () async {
+                          final url = Uri.parse(
+                            'https://www.google.com/maps/search/?api=1&query=${m.latitude},${m.longitude}',
+                          );
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                        child: Container(
                           height: 160,
-                          child: GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: LatLng(m.latitude, m.longitude),
-                              zoom: 15,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppTheme.primaryColor.withValues(alpha: 0.08),
+                                AppTheme.secondaryColor.withValues(alpha: 0.06),
+                              ],
                             ),
-                            markers: {
-                              Marker(
-                                markerId: const MarkerId('mess'),
-                                position: LatLng(m.latitude, m.longitude),
-                                infoWindow: InfoWindow(title: m.messName),
+                            border: Border.all(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Stack(
+                            children: [
+                              // Grid pattern background
+                              Positioned.fill(
+                                child: CustomPaint(
+                                  painter: _GridPainter(
+                                    color: AppTheme.primaryColor.withValues(alpha: 0.06),
+                                  ),
+                                ),
                               ),
-                            },
-                            liteModeEnabled: true,
-                            zoomControlsEnabled: false,
-                            mapToolbarEnabled: false,
-                            myLocationButtonEnabled: false,
+                              // Center pin icon
+                              Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      child: const Icon(
+                                        Icons.location_on_rounded,
+                                        color: AppTheme.primaryColor,
+                                        size: 28,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'View on Google Maps',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.primaryColor,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${m.latitude.toStringAsFixed(4)}, ${m.longitude.toStringAsFixed(4)}',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Arrow indicator
+                              Positioned(
+                                right: 14,
+                                top: 14,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.open_in_new_rounded,
+                                    size: 16,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -613,4 +685,27 @@ class _TodayMenuView extends StatelessWidget {
       }).toList(),
     );
   }
+}
+
+class _GridPainter extends CustomPainter {
+  final Color color;
+  _GridPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+
+    const spacing = 24.0;
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

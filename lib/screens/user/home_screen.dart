@@ -32,7 +32,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final messesAsync = ref.watch(nearbyMessesProvider);
 
     return Scaffold(
-      body: CustomScrollView(
+      body: RefreshIndicator(
+        color: AppTheme.primaryColor,
+        onRefresh: () async {
+          ref.invalidate(nearbyMessesProvider);
+        },
+        child: CustomScrollView(
         slivers: [
           // ── Gradient Header ──
           SliverToBoxAdapter(
@@ -321,6 +326,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
         ],
+      ),
       ),
     );
   }

@@ -1,4 +1,6 @@
 // lib/services/mess_service.dart
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/mess.dart';
 import '../models/menu.dart';
@@ -6,31 +8,63 @@ import '../models/menu.dart';
 class MessService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Get nearby messes using a PostGIS RPC function.
-  /// Falls back to fetching all approved messes if RPC is not available.
+  /// Get nearby messes.
+  /// Fetches all approved messes and optionally sorts by distance if location is provided.
   Future<List<Mess>> getNearbyMesses({
-    required double latitude,
-    required double longitude,
+    double? latitude,
+    double? longitude,
     double radiusMeters = 3000.0,
   }) async {
     try {
-      final response = await _supabase.rpc('get_nearby_messes', params: {
-        'user_lat': latitude,
-        'user_lng': longitude,
-        'radius_meters': radiusMeters,
-      });
-      if (response == null) return [];
-      return (response as List).map((e) => Mess.fromJson(e)).toList();
-    } catch (_) {
-      // Fallback: fetch all approved messes without distance filtering
       final data = await _supabase
           .from('messes')
           .select()
           .eq('status', 'approved')
           .order('created_at', ascending: false);
-      return (data as List).map((e) => Mess.fromJson(e)).toList();
+
+      final messes = (data as List).map((e) => Mess.fromJson(e)).toList();
+
+      // If we have a user location, sort by distance (nearest first)
+      if (latitude != null && longitude != null) {
+        for (int i = 0; i < messes.length; i++) {
+          final m = messes[i];
+          if (m.latitude != 0 && m.longitude != 0) {
+            final dist = _calculateDistance(
+                latitude, longitude, m.latitude, m.longitude);
+            // Rebuild with distance info using copyWith pattern
+            messes[i] = Mess.fromJson({
+              ...m.toJson(),
+              'distance_meters': dist,
+            });
+          }
+        }
+        messes.sort((a, b) =>
+            (a.distanceMeters ?? double.infinity)
+                .compareTo(b.distanceMeters ?? double.infinity));
+      }
+
+      return messes;
+    } catch (e) {
+      // Log and rethrow so the UI can show an error/retry
+      debugPrint('MessService.getNearbyMesses error: $e');
+      rethrow;
     }
   }
+
+  /// Haversine distance calculation in meters
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371000.0; // Earth radius in meters
+    final dLat = _toRad(lat2 - lat1);
+    final dLon = _toRad(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRad(lat1)) * cos(_toRad(lat2)) *
+        sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return R * c;
+  }
+
+  double _toRad(double deg) => deg * (3.141592653589793 / 180.0);
 
   /// Get a single mess by ID with rating aggregation
   Future<Mess?> getMessById(String messId) async {

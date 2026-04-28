@@ -23,10 +23,20 @@ class LocationService {
           'Location permission permanently denied. Enable it in app settings.');
     }
 
+    // Try to get last known position first for a faster response
+    try {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        return lastKnown;
+      }
+    } catch (_) {
+      // Ignore and proceed to get current position
+    }
+
     return Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        timeLimit: Duration(seconds: 10),
+        timeLimit: Duration(seconds: 30),
       ),
     );
   }

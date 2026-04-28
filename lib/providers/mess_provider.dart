@@ -13,8 +13,8 @@ final nearbyMessesProvider = FutureProvider<List<Mess>>((ref) async {
   if (position == null) {
     // No location – fetch all approved messes as fallback
     return ref.read(messServiceProvider).getNearbyMesses(
-          latitude: 0,
-          longitude: 0,
+          latitude: null,
+          longitude: null,
           radiusMeters: AppConstants.discoveryRadiusMeters,
         );
   }
